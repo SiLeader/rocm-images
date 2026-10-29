@@ -11,16 +11,31 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  setup-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      gfx: ${{ steps.load.outputs.gfx }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - id: load
+        run: |
+          gfx=$(yq -o=json -I=0 '.gfx' target.yaml)
+          echo "gfx=$gfx" >> "$GITHUB_OUTPUT"
+
   publish-base-ubuntu:
     runs-on: ubuntu-latest
     timeout-minutes: 360
+    needs:
+      - setup-matrix
     strategy:
       matrix:
         rocm:
           - "10.0"
           - "10.1"
-        gfx:
-          - "gfx1201"
+        gfx: ${{ fromJSON(needs.setup-matrix.outputs.gfx) }}
     permissions:
       contents: read
       packages: write
@@ -51,14 +66,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 360
     needs:
+      - setup-matrix
       - publish-base-ubuntu
     strategy:
       matrix:
         rocm:
-          - "10.0"
-          - "10.1"
-        gfx:
-          - "gfx1201"
+          - base: "10.0"
+            pytorch: "10.0.0"
+
+          - base: "10.1"
+            pytorch: "10.1.0"
+        gfx: ${{ fromJSON(needs.setup-matrix.outputs.gfx) }}
         comfy:
           - "v0.43.0"
     permissions:
@@ -83,22 +101,23 @@ jobs:
           file: ./comfyui/Dockerfile
           push: true
           build-args: |
-            ROCM_VERSION=${{ matrix.rocm }}
+            ROCM_VERSION=${{ matrix.rocm.base }}
             GFX_TARGET=${{ matrix.gfx }}
+            PYTORCH_ROCM_VERSION=${{ matrix.rocm.pytorch }}
             COMFY_VERSION=${{ matrix.comfy }}
-          tags: ghcr.io/sileader/rocm-images/comfyui:${{ matrix.comfy }}-rocm${{ matrix.rocm }}-${{ matrix.gfx }}
+          tags: ghcr.io/sileader/rocm-images/comfyui:${{ matrix.comfy }}-rocm${{ matrix.rocm.base }}-${{ matrix.gfx }}
 
   publish-llama-cpp:
     runs-on: ubuntu-latest
     timeout-minutes: 360
     needs:
+      - setup-matrix
       - publish-base-ubuntu
     strategy:
       matrix:
         rocm:
           - "10.0"
-        gfx:
-          - "gfx1201"
+        gfx: ${{ fromJSON(needs.setup-matrix.outputs.gfx) }}
         llama_cpp:
           - "v0.8.0"
     permissions:
