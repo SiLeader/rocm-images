@@ -4,6 +4,7 @@ ARG GFX_TARGET
 FROM ghcr.io/sileader/rocm-images/base-ubuntu:26.04-rocm${ROCM_VERSION}-${GFX_TARGET}
 
 ARG PYTORCH_ROCM_VERSION
+ARG TORCHVISION_VERSION
 ARG GFX_TARGET
 ARG COMFY_VERSION
 
@@ -18,7 +19,7 @@ RUN apt-get update && \
     cd ComfyUI && \
     /opt/comfyui/venv/bin/python -m pip install --index-url https://stable.repo.amd.com/rocm/whl-next/ \
         "torch[device-${GFX_TARGET}]==2.14.0+rocm${PYTORCH_ROCM_VERSION}" \
-        "torchvision[device-${GFX_TARGET}]==0.29.0a0+rocm${PYTORCH_ROCM_VERSION}" \
+        "torchvision[device-${GFX_TARGET}]==${TORCHVISION_VERSION}+rocm${PYTORCH_ROCM_VERSION}" \
         "torchaudio==2.11.0.3+rocm${PYTORCH_ROCM_VERSION}" && \
     /opt/comfyui/venv/bin/python -m pip install -r requirements.txt
 

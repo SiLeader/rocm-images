@@ -73,9 +73,11 @@ jobs:
         rocm:
           - base: "10.0"
             pytorch: "10.0.0"
+            torchvision: "0.29.0"
 
           - base: "10.1"
             pytorch: "10.1.0"
+            torchvision: "0.29.0a0"
         gfx: ${{ fromJSON(needs.setup-matrix.outputs.gfx) }}
         comfy:
           - "v0.43.0"
@@ -104,6 +106,7 @@ jobs:
             ROCM_VERSION=${{ matrix.rocm.base }}
             GFX_TARGET=${{ matrix.gfx }}
             PYTORCH_ROCM_VERSION=${{ matrix.rocm.pytorch }}
+            TORCHVISION_VERSION=${{ matrix.rocm.torchvision }}
             COMFY_VERSION=${{ matrix.comfy }}
           tags: ghcr.io/sileader/rocm-images/comfyui:${{ matrix.comfy }}-rocm${{ matrix.rocm.base }}-${{ matrix.gfx }}
 
