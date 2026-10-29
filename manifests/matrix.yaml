@@ -1,7 +1,0 @@
-schema-version: 1
-matrix:
-  gfx:
-    - 'gfx1201' # Radeon AI PRO R9700 / Radeon RX 9000 series
-  rocm:
-    - '10.0'
-    - '10.1'

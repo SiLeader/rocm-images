@@ -2,146 +2,104 @@
 
 [English](README.md) | [日本語](README_ja.md)
 
-Container images for AMD ROCm, with YAML manifests and Python tools for generating Dockerfiles, resolving build dependencies, and building and publishing images.
+Container images for AMD ROCm on Ubuntu 26.04. This repository contains Dockerfiles for a shared ROCm base, ComfyUI, and llama.cpp, plus a GitHub Actions workflow for publishing them to GHCR.
 
 ## Images
 
-The image names and tag formats below are defined in [`manifests/`](manifests/).
+The build targets and tags below are configured in [Publish images](.github/workflows/publish.yml). They describe the configured builds, not whether those tags have already been published. All images target x86-64 (`linux/amd64`).
 
-| Manifest | Image | Tags |
-| --- | --- | --- |
-| [`base.yaml`](manifests/base.yaml) | `ghcr.io/sileader/rocm-images/base-ubuntu` | `26.04-rocm<rocm>-<gfx>` |
-| [`comfyui.yaml`](manifests/comfyui.yaml) | `ghcr.io/sileader/rocm-images/comfyui` | `latest`, `<comfy-version>-rocm<rocm>-<gfx>` |
-| [`llama.cpp.yaml`](manifests/llama.cpp.yaml) | `ghcr.io/sileader/rocm-images/llama.cpp` | `latest`, `<llama-cpp-version>-rocm<rocm>-<gfx>` |
+| Image | Version | ROCm | GPU target | Tag format |
+| --- | --- | --- | --- | --- |
+| `ghcr.io/sileader/rocm-images/base-ubuntu` | Ubuntu `26.04` | `10.0`, `10.1` | `gfx1201` | `26.04-rocm<rocm>-<gfx>` |
+| `ghcr.io/sileader/rocm-images/comfyui` | `v0.43.0` | `10.0`, `10.1` | `gfx1201` | `<comfy-version>-rocm<rocm>-<gfx>` |
+| `ghcr.io/sileader/rocm-images/llama.cpp` | `v0.8.0` | `10.0` | `gfx1201` | `<llama-cpp-version>-rocm<rocm>-<gfx>` |
 
-The base image installs ROCm on Ubuntu. ComfyUI and llama.cpp use this shared base, with entrypoints for ComfyUI's `main.py` and `llama-server`, respectively.
+The workflow publishes versioned tags only; it does not publish `latest`.
 
-[`manifests/matrix.yaml`](manifests/matrix.yaml) defines the ROCm versions and GPU targets used by all three images. The current matrix contains ROCm `10.1` and `gfx1201`; the default platform is `linux/amd64`. Application versions are defined in each application's manifest. These settings describe the build targets; they do not establish whether a tag has already been published.
-
-To pull an image after it has been published:
+To pull images after they have been published:
 
 ```sh
-docker pull ghcr.io/sileader/rocm-images/base-ubuntu:26.04-rocm10.1-gfx1201
+docker pull ghcr.io/sileader/rocm-images/base-ubuntu:26.04-rocm10.0-gfx1201
+docker pull ghcr.io/sileader/rocm-images/comfyui:v0.43.0-rocm10.0-gfx1201
+docker pull ghcr.io/sileader/rocm-images/llama.cpp:v0.8.0-rocm10.0-gfx1201
 ```
+
+- **Base:** installs `amdrocm<rocm>-<gfx>` from AMD's stable APT repository and sets `LD_LIBRARY_PATH=/opt/rocm/lib`.
+- **ComfyUI:** uses the shared base, clones the selected ComfyUI version, and installs ROCm PyTorch packages and ComfyUI requirements in a Python virtual environment. Its entrypoint is `/opt/comfyui/venv/bin/python main.py`, with default arguments `--listen 0.0.0.0`.
+- **llama.cpp:** uses the shared base and copies prebuilt binaries from the build context. Its entrypoint is `/opt/llama.cpp/llama-server`; supply server arguments when running the container.
 
 ## Repository layout
 
 ```text
-manifests/          Image build configurations and shared build matrix
-src/rocm_images/   Manifest parser, Dockerfile generator, dependency resolver, and build CLI
-tests/             Tests for the build tools
-test-data/         Test fixtures
+base/
+  Dockerfile                 Ubuntu 26.04 with ROCm
+  amdrocm-stable.sources     AMD stable APT repository configuration
+comfyui/
+  Dockerfile                 ComfyUI and ROCm PyTorch packages
+llama.cpp/
+  Dockerfile                 Image using prebuilt llama.cpp binaries
+  download.sh                Download and verify the requested release
+.github/workflows/
+  publish.yml                Manual build and publish workflow
 ```
 
-## Requirements and setup
+## Local builds
 
-- Python 3.14 or later
-- `uv` for the commands below
-- Docker with BuildKit support for building images (generated Dockerfiles use heredocs)
-- Registry authentication when pushing images
+Docker and access to the upstream package and source repositories are required. Run the following commands from the repository root. Build arguments have no defaults, so specify each argument shown.
 
-Run the following commands from the repository root:
+Build the shared base first. Application Dockerfiles select it by its exact versioned tag.
 
 ```sh
-uv sync
-uv run rocm-images --help
+docker build --platform linux/amd64 \
+  --build-arg ROCM_VERSION=10.0 \
+  --build-arg GFX_TARGET=gfx1201 \
+  -t ghcr.io/sileader/rocm-images/base-ubuntu:26.04-rocm10.0-gfx1201 \
+  ./base
 ```
 
-Inspecting manifests and generating Dockerfiles do not require a running Docker daemon.
-
-## Inspect dependencies
+### ComfyUI
 
 ```sh
-uv run rocm-images tree manifests/comfyui.yaml manifests/llama.cpp.yaml
-uv run rocm-images tree manifests/comfyui.yaml --format yaml
-uv run rocm-images tree manifests/comfyui.yaml --format json -o dependencies.json
+docker build --platform linux/amd64 \
+  --build-arg ROCM_VERSION=10.0 \
+  --build-arg GFX_TARGET=gfx1201 \
+  --build-arg COMFY_VERSION=v0.43.0 \
+  -t ghcr.io/sileader/rocm-images/comfyui:v0.43.0-rocm10.0-gfx1201 \
+  ./comfyui
 ```
 
-The default text output shows the dependency tree and build order, with dependencies first. Shared build targets are deduplicated, and each matrix/platform combination is a separate target. Embedded stages are labeled `inline stage` and are not built separately.
+To build the configured ROCm `10.1` variant, change `ROCM_VERSION` and the output tags to `10.1` in both the base and ComfyUI commands.
 
-YAML and JSON output contain `roots`, `build_order`, and `targets`. Each target includes its source manifest, platform, matrix values, expanded image name and tags, separate build dependencies, and inline sources.
+### llama.cpp
 
-## Generate Dockerfiles
+Download the binaries before building. Run this preparation step on an Ubuntu/Debian x86-64 environment with Bash, APT, and root access. The script installs its download dependencies using `apt-get`; it is not a native macOS setup command.
 
 ```sh
-uv run rocm-images generate-dockerfile manifests/comfyui.yaml -o generated/comfyui
+(cd llama.cpp && sudo bash download.sh v0.8.0 10.0)
 ```
 
-`--output` / `-o` selects the output directory; the default is `dockerfiles`. A Dockerfile is generated for every combination of matrix values and platforms, together with any separately referenced base images. Filenames contain the manifest name, platform, matrix values, and an identifying hash.
+The script resolves the requested GitHub release, follows `nightly-tag.txt` when present, selects the Ubuntu x64 archive matching the requested ROCm version, and verifies downloaded assets against GitHub's SHA-256 digests. Missing matching assets or valid digests cause the download to fail. It extracts the binaries to `llama.cpp/llama.cpp/` when invoked as above and checks that `llama-server` is executable.
 
-Generating again overwrites matching files but does not remove files for old combinations. This command only generates Dockerfiles; it does not build, tag, or push images.
-
-## Build and publish
+Then build the image:
 
 ```sh
-uv run rocm-images build manifests/comfyui.yaml manifests/llama.cpp.yaml -o generated
-uv run rocm-images build manifests/comfyui.yaml --push
+docker build --platform linux/amd64 \
+  --build-arg ROCM_VERSION=10.0 \
+  --build-arg GFX_TARGET=gfx1201 \
+  --build-arg LLAMA_CPP_VERSION=v0.8.0 \
+  -t ghcr.io/sileader/rocm-images/llama.cpp:v0.8.0-rocm10.0-gfx1201 \
+  ./llama.cpp
 ```
 
-The `build` command validates the complete dependency plan, generates Dockerfiles, and invokes `docker build` in dependency order. It applies every tag in `image.tags`. The default output directory is `dockerfiles`, and each target uses its source manifest's directory as the build context.
+`LLAMA_CPP_VERSION` sets the image's version label. The Dockerfile copies the prepared binaries without downloading them, so use the same version and ROCm value for the download and build steps.
 
-Use `--context` to set one context for all targets, or `--docker-command` (alias `--docker`) to select a Docker executable or command prefix:
+## Publishing with GitHub Actions
 
-```sh
-uv run rocm-images build manifests/comfyui.yaml --context .
-uv run rocm-images build manifests/comfyui.yaml --docker-command 'docker --context my-builder'
-```
+[Publish images](.github/workflows/publish.yml) runs manually via `workflow_dispatch`. Select **Actions → Publish images → Run workflow** and choose the ref to publish. The workflow must be on the default branch to appear in the Actions interface.
 
-The Docker command is split into arguments and executed without shell expansion. Build results must be available to subsequent builds through the same Docker daemon so dependent images can reuse their base images.
+The workflow builds and pushes the base image matrix first. After the base job succeeds, the ComfyUI and llama.cpp jobs can run in parallel. The llama.cpp job downloads and verifies its binaries before building. The workflow has no test job. Publishing runs are serialized with `cancel-in-progress: false`.
 
-Images are pushed only when `--push` is supplied. In that case, all tags for each target, including dependencies, are pushed immediately after that target builds successfully. A build or push failure stops the remaining work.
-
-Each platform is built and pushed separately; the tool does not create multi-platform image manifests. Reusing a tag across matrix values or platforms causes later builds and pushes to update that tag. Use variant-specific tags when selecting a particular ROCm version or GPU target.
-
-## Manifest format
-
-Image manifests use `schema-version: 1` and support these fields:
-
-| Field | Purpose |
-| --- | --- |
-| `vars` | String variables referenced as `${{ vars.NAME }}` |
-| `matrix` | Axes of string values; all combinations are generated |
-| `matrix-from-file` | Shared matrix file, used instead of an inline `matrix` |
-| `platforms` | Target platforms; defaults to `[linux/amd64]` |
-| `base-image` | External image reference or another manifest |
-| `image` | Required image `name` and nonempty list of `tags` |
-| `steps` | Ordered Dockerfile operations |
-
-Matrix values are referenced as `${{ matrix.AXIS }}`. Ordinary shell expressions such as `${NAME}` are preserved. A shared matrix file contains `schema-version: 1` and `matrix`.
-
-`${{ readYaml('matrix.yaml').matrix.gfx }}` reads a value from a YAML file relative to the declaring manifest. Dot-separated keys select nested mappings. A standalone expression preserves the value's type, so a list can be used as a matrix axis; only strings can be embedded in other text. These references are resolved before manifest validation.
-
-`matrix-from-file` and `base-image.source` paths are resolved relative to the manifest that declares them. For example, the application manifests reference the common base as follows:
-
-```yaml
-base-image:
-  source: ./base.yaml
-  with-matrix: ${{ matrix }}
-  use-from: true
-```
-
-With `use-from: true`, the base is generated as a separate Dockerfile, and its expanded image name and first tag become the child's `FROM` reference. Without it, the referenced manifest is embedded as an earlier stage in the same Dockerfile. `with-matrix` can pass the full current matrix or an explicit mapping. Omitted dependency axes are inferred only when they have a single candidate, and dependencies must support the requested platform.
-
-An external base uses `base-image.name`, an optional `tag`, and an optional platform-to-SHA-256 `digest` mapping. When `digest` is specified, it must include every requested platform.
-
-Each step has exactly one of `run`, `workdir`, or `entrypoint`, plus an optional `name`. These generate `RUN`, `WORKDIR`, and an exec-form `ENTRYPOINT`, respectively. Every `run` is an independent instruction using the default shell. Multiline scripts are preserved using BuildKit heredocs.
-
-Unknown keys, undefined expressions, duplicate YAML keys, and circular source references are rejected.
-
-## Development
-
-### CI
-
-- [Tests](.github/workflows/test.yml) runs on every pull request. It installs locked dependencies with Python 3.14, runs the test suite, and validates all image manifests by generating Dockerfiles. It does not build or push container images.
-- [Publish images](.github/workflows/publish.yml) runs only via `workflow_dispatch`. In GitHub Actions, select **Publish images** → **Run workflow** and choose the ref to publish. After the tests pass, it builds the base, ComfyUI, and llama.cpp images in dependency order and pushes every manifest-defined tag to GHCR. Publishing runs are serialized to prevent concurrent tag updates.
-
-Publishing authenticates with the repository's `GITHUB_TOKEN` using `packages: write`; no separate registry secret is required. Existing GHCR packages must grant this repository Actions write access. Manifest image names determine the destination (currently `ghcr.io/sileader/rocm-images/*`); update them before publishing from a fork. The manual workflow must be present on the default branch to appear in GitHub Actions.
-
-Run the build-tool tests:
-
-```sh
-uv run python -m unittest discover -s tests -v
-```
+Each job authenticates to GHCR using the repository's `GITHUB_TOKEN` with `packages: write`. Existing GHCR packages must grant this repository Actions write access. Image destinations and version matrices are set in the workflow; update the destinations before publishing from a fork. The application Dockerfiles also reference `ghcr.io/sileader/rocm-images/base-ubuntu`, so update those references if you change the base image namespace.
 
 ## License
 

@@ -11,38 +11,124 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  publish:
-    runs-on: ubuntu-24.04
+  publish-base-ubuntu:
+    runs-on: ubuntu-latest
     timeout-minutes: 360
+    strategy:
+      matrix:
+        rocm:
+          - "10.0"
+          - "10.1"
+        gfx:
+          - "gfx1201"
     permissions:
       contents: read
       packages: write
-    env:
-      DOCKER_BUILDKIT: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
-        with:
-          version: "0.12.5"
-          python-version: "3.14"
-          enable-cache: false
-      - name: Install dependencies
-        run: uv sync --locked
-      - name: Run tests
-        run: |
-          command -v jq sha256sum
-          uv run --locked python -m unittest discover -s tests -v
+
       - name: Log in to GHCR
         uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build and push all images
-        run: >-
-          uv run --locked rocm-images build
-          manifests/base.yaml manifests/comfyui.yaml manifests/llama.cpp.yaml
-          --output "${{ runner.temp }}/dockerfiles"
-          --push
+
+      - name: Build and push base ubuntu
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ./base
+          file: ./base/Dockerfile
+          push: true
+          build-args: |
+            ROCM_VERSION=${{ matrix.rocm }}
+            GFX_TARGET=${{ matrix.gfx }}
+          tags: ghcr.io/sileader/rocm-images/base-ubuntu:26.04-rocm${{ matrix.rocm }}-${{ matrix.gfx }}
+
+  publish-comfyui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    needs:
+      - publish-base-ubuntu
+    strategy:
+      matrix:
+        rocm:
+          - "10.0"
+          - "10.1"
+        gfx:
+          - "gfx1201"
+        comfy:
+          - "v0.43.0"
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Log in to GHCR
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push comfyui
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ./comfyui
+          file: ./comfyui/Dockerfile
+          push: true
+          build-args: |
+            ROCM_VERSION=${{ matrix.rocm }}
+            GFX_TARGET=${{ matrix.gfx }}
+            COMFY_VERSION=${{ matrix.comfy }}
+          tags: ghcr.io/sileader/rocm-images/comfyui:${{ matrix.comfy }}-rocm${{ matrix.rocm }}-${{ matrix.gfx }}
+
+  publish-llama-cpp:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    needs:
+      - publish-base-ubuntu
+    strategy:
+      matrix:
+        rocm:
+          - "10.0"
+        gfx:
+          - "gfx1201"
+        llama_cpp:
+          - "v0.8.0"
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Log in to GHCR
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download llama.cpp prebuilt binaries
+        run: |
+          cd llama.cpp
+          sudo bash download.sh "${{ matrix.llama_cpp }}" "${{ matrix.rocm }}"
+
+      - name: Build and push llama-cpp
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ./llama.cpp
+          file: ./llama.cpp/Dockerfile
+          push: true
+          build-args: |
+            ROCM_VERSION=${{ matrix.rocm }}
+            GFX_TARGET=${{ matrix.gfx }}
+            LLAMA_CPP_VERSION=${{ matrix.llama_cpp }}
+          tags: ghcr.io/sileader/rocm-images/llama.cpp:${{ matrix.llama_cpp }}-rocm${{ matrix.rocm }}-${{ matrix.gfx }}
