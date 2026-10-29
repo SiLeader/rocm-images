@@ -2,146 +2,104 @@
 
 [English](README.md) | [日本語](README_ja.md)
 
-AMD ROCm 向けのコンテナイメージを配布するリポジトリです。イメージのビルド設定を YAML で管理し、Python 製のツールで Dockerfile の生成、依存関係の解決、イメージのビルドと公開を行います。
+Ubuntu 26.04 上で AMD ROCm を利用するためのコンテナイメージです。共通の ROCm ベース、ComfyUI、llama.cpp の Dockerfile と、GHCR に公開するための GitHub Actions ワークフローを管理しています。
 
 ## イメージ
 
-以下のイメージ名とタグ形式は、[`manifests/`](manifests/) に定義しています。
+以下のビルド対象とタグは、[Publish images](.github/workflows/publish.yml) に設定しています。これらはビルド設定であり、タグの公開状況を示すものではありません。すべてのイメージは x86-64（`linux/amd64`）向けです。
 
-| マニフェスト | イメージ | タグ |
-| --- | --- | --- |
-| [`base.yaml`](manifests/base.yaml) | `ghcr.io/sileader/rocm-images/base-ubuntu` | `26.04-rocm<rocm>-<gfx>` |
-| [`comfyui.yaml`](manifests/comfyui.yaml) | `ghcr.io/sileader/rocm-images/comfyui` | `latest`、`<comfy-version>-rocm<rocm>-<gfx>` |
-| [`llama.cpp.yaml`](manifests/llama.cpp.yaml) | `ghcr.io/sileader/rocm-images/llama.cpp` | `latest`、`<llama-cpp-version>-rocm<rocm>-<gfx>` |
+| イメージ | バージョン | ROCm | GPU ターゲット | タグ形式 |
+| --- | --- | --- | --- | --- |
+| `ghcr.io/sileader/rocm-images/base-ubuntu` | Ubuntu `26.04` | `10.0`、`10.1` | `gfx1201` | `26.04-rocm<rocm>-<gfx>` |
+| `ghcr.io/sileader/rocm-images/comfyui` | `v0.43.0` | `10.0`、`10.1` | `gfx1201` | `<comfy-version>-rocm<rocm>-<gfx>` |
+| `ghcr.io/sileader/rocm-images/llama.cpp` | `v0.8.0` | `10.0` | `gfx1201` | `<llama-cpp-version>-rocm<rocm>-<gfx>` |
 
-ベースイメージには Ubuntu 上に ROCm をインストールします。ComfyUI と llama.cpp はこの共通ベースを使用し、それぞれ ComfyUI の `main.py` と `llama-server` をエントリーポイントに設定します。
-
-[`manifests/matrix.yaml`](manifests/matrix.yaml) で、3 つのイメージに共通する ROCm バージョンと GPU ターゲットを定義しています。現在の matrix は ROCm `10.1` と `gfx1201`、既定の platform は `linux/amd64` です。アプリケーションのバージョンは各マニフェストで指定します。これらはビルド対象の設定であり、タグの公開状況を示すものではありません。
+ワークフローはバージョン付きのタグのみを公開し、`latest` は公開しません。
 
 公開済みのイメージは、次のように取得できます。
 
 ```sh
-docker pull ghcr.io/sileader/rocm-images/base-ubuntu:26.04-rocm10.1-gfx1201
+docker pull ghcr.io/sileader/rocm-images/base-ubuntu:26.04-rocm10.0-gfx1201
+docker pull ghcr.io/sileader/rocm-images/comfyui:v0.43.0-rocm10.0-gfx1201
+docker pull ghcr.io/sileader/rocm-images/llama.cpp:v0.8.0-rocm10.0-gfx1201
 ```
+
+- **ベース:** AMD の stable APT リポジトリから `amdrocm<rocm>-<gfx>` をインストールし、`LD_LIBRARY_PATH=/opt/rocm/lib` を設定します。
+- **ComfyUI:** 共通ベースを使用し、指定したバージョンの ComfyUI を取得して、Python 仮想環境に ROCm 向け PyTorch パッケージと ComfyUI の依存パッケージをインストールします。エントリーポイントは `/opt/comfyui/venv/bin/python main.py`、既定の引数は `--listen 0.0.0.0` です。
+- **llama.cpp:** 共通ベースを使用し、ビルドコンテキストからビルド済みバイナリをコピーします。エントリーポイントは `/opt/llama.cpp/llama-server` です。サーバーの引数はコンテナ実行時に指定してください。
 
 ## リポジトリ構成
 
 ```text
-manifests/          イメージのビルド設定と共通のビルド matrix
-src/rocm_images/   マニフェストの解釈、Dockerfile 生成、依存関係の解決、ビルド用 CLI
-tests/             ビルドツールのテスト
-test-data/         テスト用データ
+base/
+  Dockerfile                 Ubuntu 26.04 と ROCm
+  amdrocm-stable.sources     AMD stable APT リポジトリ設定
+comfyui/
+  Dockerfile                 ComfyUI と ROCm 向け PyTorch パッケージ
+llama.cpp/
+  Dockerfile                 ビルド済み llama.cpp バイナリを使うイメージ
+  download.sh                指定したリリースのダウンロードと検証
+.github/workflows/
+  publish.yml                手動実行のビルド・公開ワークフロー
 ```
 
-## 必要な環境とセットアップ
+## ローカルビルド
 
-- Python 3.14 以上
-- 以下のコマンド例で使用する `uv`
-- イメージのビルドには BuildKit 対応の Docker（生成する Dockerfile で heredoc を使用します）
-- イメージのプッシュにはレジストリへの認証
+Docker と、取得元のパッケージ・ソースリポジトリへのアクセスが必要です。以下のコマンドはリポジトリのルートで実行してください。ビルド引数には既定値がないため、記載した引数をそれぞれ指定します。
 
-リポジトリのルートで実行してください。
+最初に共通ベースをビルドします。アプリケーションの Dockerfile は、バージョン付きタグでこのベースを参照します。
 
 ```sh
-uv sync
-uv run rocm-images --help
+docker build --platform linux/amd64 \
+  --build-arg ROCM_VERSION=10.0 \
+  --build-arg GFX_TARGET=gfx1201 \
+  -t ghcr.io/sileader/rocm-images/base-ubuntu:26.04-rocm10.0-gfx1201 \
+  ./base
 ```
 
-マニフェストの確認と Dockerfile の生成には、Docker デーモンの起動は不要です。
-
-## 依存関係の確認
+### ComfyUI
 
 ```sh
-uv run rocm-images tree manifests/comfyui.yaml manifests/llama.cpp.yaml
-uv run rocm-images tree manifests/comfyui.yaml --format yaml
-uv run rocm-images tree manifests/comfyui.yaml --format json -o dependencies.json
+docker build --platform linux/amd64 \
+  --build-arg ROCM_VERSION=10.0 \
+  --build-arg GFX_TARGET=gfx1201 \
+  --build-arg COMFY_VERSION=v0.43.0 \
+  -t ghcr.io/sileader/rocm-images/comfyui:v0.43.0-rocm10.0-gfx1201 \
+  ./comfyui
 ```
 
-既定のテキスト出力では、依存ツリーと依存先を先に並べたビルド順序を表示します。共通のビルド対象は重複を除き、matrix と platform の組み合わせごとに別の対象として扱います。埋め込みステージは `inline stage` と表示し、個別にはビルドしません。
+設定済みの ROCm `10.1` 向けをビルドする場合は、ベースと ComfyUI の両方のコマンドで `ROCM_VERSION` と出力タグを `10.1` に変更してください。
 
-YAML / JSON 出力には `roots`、`build_order`、`targets` を含みます。各対象には、元マニフェスト、platform、matrix の値、展開済みのイメージ名とタグ、個別ビルドが必要な依存先、埋め込み元を出力します。
+### llama.cpp
 
-## Dockerfile の生成
+ビルド前にバイナリをダウンロードします。この準備手順は、Bash、APT、root 権限を利用できる Ubuntu/Debian の x86-64 環境で実行してください。スクリプトは `apt-get` でダウンロードに必要なパッケージをインストールするため、macOS 上で直接実行するためのコマンドではありません。
 
 ```sh
-uv run rocm-images generate-dockerfile manifests/comfyui.yaml -o generated/comfyui
+(cd llama.cpp && sudo bash download.sh v0.8.0 10.0)
 ```
 
-`--output` / `-o` で出力ディレクトリを指定します。既定値は `dockerfiles` です。matrix の直積と platform の全組み合わせについて Dockerfile を生成し、個別のイメージとして参照するベースもあわせて生成します。ファイル名にはマニフェスト名、platform、matrix の値、識別用ハッシュを含みます。
+スクリプトは指定された GitHub リリースを取得し、`nightly-tag.txt` があれば参照先のリリースをたどります。その後、指定した ROCm バージョンに一致する Ubuntu x64 アーカイブを選び、ダウンロードしたファイルを GitHub の SHA-256 ダイジェストで検証します。一致するアーカイブや有効なダイジェストがない場合は失敗します。上記の実行方法では `llama.cpp/llama.cpp/` にバイナリを展開し、`llama-server` が実行可能であることを確認します。
 
-再生成時には同じファイルを上書きしますが、古い組み合わせのファイルは削除しません。このコマンドは Dockerfile の生成のみを行い、ビルド、タグ付け、プッシュは行いません。
-
-## ビルドと公開
+続いてイメージをビルドします。
 
 ```sh
-uv run rocm-images build manifests/comfyui.yaml manifests/llama.cpp.yaml -o generated
-uv run rocm-images build manifests/comfyui.yaml --push
+docker build --platform linux/amd64 \
+  --build-arg ROCM_VERSION=10.0 \
+  --build-arg GFX_TARGET=gfx1201 \
+  --build-arg LLAMA_CPP_VERSION=v0.8.0 \
+  -t ghcr.io/sileader/rocm-images/llama.cpp:v0.8.0-rocm10.0-gfx1201 \
+  ./llama.cpp
 ```
 
-`build` は依存関係全体を検証し、Dockerfile を生成して、依存先から順に `docker build` を実行します。`image.tags` にあるすべてのタグを付けます。出力先の既定値は `dockerfiles`、ビルドコンテキストの既定値は各対象の元マニフェストがあるディレクトリです。
+`LLAMA_CPP_VERSION` はイメージのバージョンラベルを設定します。Dockerfile は準備済みのバイナリをコピーするだけでダウンロードは行わないため、ダウンロード時とビルド時でバージョンと ROCm の値をそろえてください。
 
-`--context` で全対象に共通のコンテキストを指定できます。`--docker-command`（別名 `--docker`）では、Docker の実行ファイルやコマンドのプレフィックスを指定できます。
+## GitHub Actions での公開
 
-```sh
-uv run rocm-images build manifests/comfyui.yaml --context .
-uv run rocm-images build manifests/comfyui.yaml --docker-command 'docker --context my-builder'
-```
+[Publish images](.github/workflows/publish.yml) は `workflow_dispatch` による手動実行です。**Actions → Publish images → Run workflow** を選び、公開する ref を指定してください。Actions の画面に表示するには、ワークフローをデフォルトブランチに配置する必要があります。
 
-Docker コマンドは引数に分割して実行し、シェル展開は行いません。依存するイメージがベースを再利用できるよう、ビルド結果を同じ Docker デーモンから参照できる環境で実行してください。
+最初にベースイメージの全組み合わせをビルドしてプッシュします。ベースのジョブが成功した後、ComfyUI と llama.cpp のジョブは並列に実行できます。llama.cpp のジョブではビルド前にバイナリをダウンロードして検証します。このワークフローにテストジョブはありません。公開ワークフローの実行は `cancel-in-progress: false` で直列化しています。
 
-プッシュは `--push` を指定した場合のみ実行します。指定時は、依存先を含む各対象のビルド成功直後に、その対象のすべてのタグをプッシュします。ビルドまたはプッシュに失敗すると、残りの処理を停止します。
-
-platform ごとに個別にビルドとプッシュを行い、複数 platform をまとめるイメージマニフェストは作成しません。複数の matrix 値や platform で同じタグを使うと、後のビルドとプッシュでそのタグが更新されます。特定の ROCm バージョンや GPU ターゲットを選ぶ場合は、それらを含むタグを使用してください。
-
-## マニフェストの形式
-
-イメージのマニフェストは `schema-version: 1` を使用し、次のフィールドに対応します。
-
-| フィールド | 用途 |
-| --- | --- |
-| `vars` | `${{ vars.NAME }}` で参照する文字列変数 |
-| `matrix` | 文字列の候補を持つ軸。すべての組み合わせを生成 |
-| `matrix-from-file` | インラインの `matrix` の代わりに使用する共通 matrix ファイル |
-| `platforms` | 対象 platform。既定値は `[linux/amd64]` |
-| `base-image` | 外部イメージまたは別のマニフェストへの参照 |
-| `image` | 必須のイメージ名 `name` と、空でないタグのリスト `tags` |
-| `steps` | 順番に実行する Dockerfile の操作 |
-
-matrix の値は `${{ matrix.AXIS }}` で参照します。シェルの `${NAME}` などは保持します。共通 matrix ファイルには `schema-version: 1` と `matrix` を記述します。
-
-`${{ readYaml('matrix.yaml').matrix.gfx }}` は、記述したマニフェストからの相対パスで YAML を読み込み、ドット区切りのキーで入れ子の値を参照します。式単独では値の型を保持するため、リストを matrix の軸として利用できます。文字列への埋め込みは文字列の値のみ可能です。これらの参照はマニフェストの検証前に解決します。
-
-`matrix-from-file` と `base-image.source` のパスは、それぞれを記述したマニフェストのディレクトリを基準に解決します。アプリケーションのマニフェストでは、次のように共通ベースを参照しています。
-
-```yaml
-base-image:
-  source: ./base.yaml
-  with-matrix: ${{ matrix }}
-  use-from: true
-```
-
-`use-from: true` の場合、ベースを別の Dockerfile として生成し、その展開済みイメージ名と先頭のタグを子側の `FROM` に使います。省略時または `false` の場合は、参照先を同じ Dockerfile の前段ステージとして埋め込みます。`with-matrix` には現在の matrix 全体、または個別のマッピングを渡せます。省略した依存先の軸は、候補が 1 つの場合のみ補完します。依存先も対象 platform に対応している必要があります。
-
-外部ベースには `base-image.name`、任意の `tag`、任意の platform ごとの SHA-256 `digest` マッピングを指定します。`digest` を指定した場合は、対象となるすべての platform の値が必要です。
-
-各 step には `run`、`workdir`、`entrypoint` のいずれか 1 つと、任意の `name` を指定します。それぞれ `RUN`、`WORKDIR`、exec 形式の `ENTRYPOINT` を生成します。各 `run` は既定のシェルを使う独立した命令です。複数行のスクリプトは BuildKit の heredoc で保持します。
-
-未知のキー、未定義の式、重複した YAML キー、循環する参照はエラーになります。
-
-## 開発
-
-### CI
-
-- [Tests](.github/workflows/test.yml) は各 PR で実行します。Python 3.14 でロック済みの依存関係をインストールし、テストと全イメージのマニフェストからの Dockerfile 生成を検証します。コンテナイメージのビルドやプッシュは行いません。
-- [Publish images](.github/workflows/publish.yml) は `workflow_dispatch` による手動実行専用です。GitHub Actions で **Publish images** → **Run workflow** を選び、公開する ref を指定してください。テスト成功後、ベース・ComfyUI・llama.cpp を依存順にビルドし、マニフェストに定義されたすべてのタグを GHCR にプッシュします。公開処理は同じタグを同時更新しないよう直列化しています。
-
-公開時の認証には、`packages: write` 権限を付与したリポジトリの `GITHUB_TOKEN` を使用し、別途レジストリ用シークレットを設定する必要はありません。既存の GHCR パッケージには、このリポジトリの Actions からの書き込みを許可してください。公開先はマニフェストのイメージ名（現在は `ghcr.io/sileader/rocm-images/*`）で決まるため、フォークから公開する場合は事前に変更してください。手動ワークフローを GitHub Actions に表示するには、デフォルトブランチに配置する必要があります。
-
-ビルドツールのテストを実行するには、次のコマンドを使用します。
-
-```sh
-uv run python -m unittest discover -s tests -v
-```
+各ジョブは `packages: write` 権限を付与したリポジトリの `GITHUB_TOKEN` で GHCR に認証します。既存の GHCR パッケージには、このリポジトリの Actions からの書き込みを許可してください。公開先とバージョンの組み合わせはワークフローで指定しているため、フォークから公開する場合は公開先を変更してください。アプリケーションの Dockerfile も `ghcr.io/sileader/rocm-images/base-ubuntu` を参照しているため、ベースイメージの名前空間を変更する場合は参照先も更新してください。
 
 ## ライセンス
 
