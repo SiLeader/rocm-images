@@ -45,7 +45,7 @@ jobs:
           build-args: |
             ROCM_VERSION=${{ matrix.rocm }}
             GFX_TARGET=${{ matrix.gfx }}
-          tags: ghcr.io/${{ github.repository }}/base-ubuntu:26.04-rocm${{ matrix.rocm }}-${{ matrix.gfx }}
+          tags: ghcr.io/sileader/rocm-images/base-ubuntu:26.04-rocm${{ matrix.rocm }}-${{ matrix.gfx }}
 
   publish-comfyui:
     runs-on: ubuntu-latest
@@ -86,7 +86,7 @@ jobs:
             ROCM_VERSION=${{ matrix.rocm }}
             GFX_TARGET=${{ matrix.gfx }}
             COMFY_VERSION=${{ matrix.comfy }}
-          tags: ghcr.io/${{ github.repository }}/comfyui:${{ matrix.comfy }}-rocm${{ matrix.rocm }}-${{ matrix.gfx }}
+          tags: ghcr.io/sileader/rocm-images/comfyui:${{ matrix.comfy }}-rocm${{ matrix.rocm }}-${{ matrix.gfx }}
 
   publish-llama-cpp:
     runs-on: ubuntu-latest
@@ -119,7 +119,7 @@ jobs:
       - name: Download llama.cpp prebuilt binaries
         run: |
           cd llama.cpp
-          bash download.sh "${{ matrix.llama_cpp }}" "${{ matrix.rocm }}"
+          sudo bash download.sh "${{ matrix.llama_cpp }}" "${{ matrix.rocm }}"
 
       - name: Build and push llama-cpp
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
@@ -131,4 +131,4 @@ jobs:
             ROCM_VERSION=${{ matrix.rocm }}
             GFX_TARGET=${{ matrix.gfx }}
             LLAMA_CPP_VERSION=${{ matrix.llama_cpp }}
-          tags: ghcr.io/${{ github.repository }}/llama.cpp:${{ matrix.llama_cpp }}-rocm${{ matrix.rocm }}-${{ matrix.gfx }}
+          tags: ghcr.io/sileader/rocm-images/llama.cpp:${{ matrix.llama_cpp }}-rocm${{ matrix.rocm }}-${{ matrix.gfx }}

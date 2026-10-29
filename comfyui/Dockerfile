@@ -1,8 +1,11 @@
 ARG ROCM_VERSION
 ARG GFX_TARGET
-ARG COMFY_VERSION
 
 FROM ghcr.io/sileader/rocm-images/base-ubuntu:26.04-rocm${ROCM_VERSION}-${GFX_TARGET}
+
+ARG ROCM_VERSION
+ARG GFX_TARGET
+ARG COMFY_VERSION
 
 LABEL comfyui.version="${COMFY_VERSION}"
 
@@ -11,7 +14,7 @@ WORKDIR /opt/comfyui
 RUN apt-get update && \
     apt-get install -y python3 python3-pip python3-venv git && \
     python3 -m venv /opt/comfyui/venv && \
-    git clone -b "${COMFY_VERSION}" -d 1  https://github.com/Comfy-Org/ComfyUI.git ComfyUI && \
+    git clone -b "${COMFY_VERSION}" --depth 1  https://github.com/Comfy-Org/ComfyUI.git ComfyUI && \
     cd ComfyUI && \
     /opt/comfyui/venv/bin/python -m pip install --index-url https://stable.repo.amd.com/rocm/whl-next/ "torch[device-${GFX_TARGET}]==2.14.0+rocm${ROCM_VERSION}" "torchvision[device-${GFX_TARGET}]==0.29.0a0+rocm${ROCM_VERSION}" "torchaudio==2.11.0.3+rocm${ROCM_VERSION}" && \
     /opt/comfyui/venv/bin/python -m pip install -r requirements.txt

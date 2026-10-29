@@ -5,6 +5,8 @@ if [[ $# -lt 2 ]]; then
   exit 1
 fi
 
+set -eu
+
 release_tag="$1"
 rocm_version="$2"
 
@@ -51,7 +53,7 @@ rocm_asset=$(printf '%s' "$release" | jq -ec --arg tag "$release_tag" --arg rocm
 download_asset "$rocm_asset" "$download_dir/llama.tar.gz"
 
 # Release archives contain a top-level directory.
-mkdir -p /opt/llama.cpp
+mkdir -p ./llama.cpp
 tar -xzf "$download_dir/llama.tar.gz" -C ./llama.cpp --strip-components=1
 test -x ./llama.cpp/llama-server
  
