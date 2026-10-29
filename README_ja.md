@@ -109,6 +109,8 @@ platform ごとに個別にビルドとプッシュを行い、複数 platform �
 
 matrix の値は `${{ matrix.AXIS }}` で参照します。シェルの `${NAME}` などは保持します。共通 matrix ファイルには `schema-version: 1` と `matrix` を記述します。
 
+`${{ readYaml('matrix.yaml').matrix.gfx }}` は、記述したマニフェストからの相対パスで YAML を読み込み、ドット区切りのキーで入れ子の値を参照します。式単独では値の型を保持するため、リストを matrix の軸として利用できます。文字列への埋め込みは文字列の値のみ可能です。これらの参照はマニフェストの検証前に解決します。
+
 `matrix-from-file` と `base-image.source` のパスは、それぞれを記述したマニフェストのディレクトリを基準に解決します。アプリケーションのマニフェストでは、次のように共通ベースを参照しています。
 
 ```yaml
@@ -127,6 +129,13 @@ base-image:
 未知のキー、未定義の式、重複した YAML キー、循環する参照はエラーになります。
 
 ## 開発
+
+### CI
+
+- [Tests](.github/workflows/test.yml) は各 PR で実行します。Python 3.14 でロック済みの依存関係をインストールし、テストと全イメージのマニフェストからの Dockerfile 生成を検証します。コンテナイメージのビルドやプッシュは行いません。
+- [Publish images](.github/workflows/publish.yml) は `workflow_dispatch` による手動実行専用です。GitHub Actions で **Publish images** → **Run workflow** を選び、公開する ref を指定してください。テスト成功後、ベース・ComfyUI・llama.cpp を依存順にビルドし、マニフェストに定義されたすべてのタグを GHCR にプッシュします。公開処理は同じタグを同時更新しないよう直列化しています。
+
+公開時の認証には、`packages: write` 権限を付与したリポジトリの `GITHUB_TOKEN` を使用し、別途レジストリ用シークレットを設定する必要はありません。既存の GHCR パッケージには、このリポジトリの Actions からの書き込みを許可してください。公開先はマニフェストのイメージ名（現在は `ghcr.io/sileader/rocm-images/*`）で決まるため、フォークから公開する場合は事前に変更してください。手動ワークフローを GitHub Actions に表示するには、デフォルトブランチに配置する必要があります。
 
 ビルドツールのテストを実行するには、次のコマンドを使用します。
 

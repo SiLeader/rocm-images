@@ -105,9 +105,16 @@ def construct_mapping(loader, node):
 UniqueKeyLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, construct_mapping)
 
 
+def read_yaml(path):
+    try:
+        return yaml.load(path.read_text(), Loader=UniqueKeyLoader)
+    except (OSError, UnicodeError, yaml.YAMLError, ConfigError) as exc:
+        raise ConfigError(f"{path}: {exc}") from exc
+
+
 def read_model(path, model):
     try:
-        return model.model_validate(yaml.load(path.read_text(), Loader=UniqueKeyLoader))
+        return model.model_validate(expand(read_yaml(path), {}, {}, path, yaml_only=True))
     except (OSError, yaml.YAMLError, ValidationError, ConfigError) as exc:
         raise ConfigError(f"{path}: {exc}") from exc
 
@@ -123,8 +130,22 @@ def load_config(path):
 EXPRESSION = re.compile(r"\$\{\{\s*([^{}]*?)\s*\}\}")
 
 
-def expand(value, variables, matrix):
-    def lookup(expression):
+def expand(value, variables, matrix, source=None, *, yaml_only=False):
+    def lookup(expression_match):
+        expression = expression_match.group(1)
+        if expression.startswith("readYaml("):
+            match = re.fullmatch(r"readYaml\(\s*(['\"])([^'\"\r\n]+)\1\s*\)((?:\.[\w-]+)*)", expression)
+            if match is None or source is None:
+                raise ConfigError(f"invalid readYaml expression: {expression}")
+            path = source.parent / match.group(2)
+            result = read_yaml(path)
+            for key in match.group(3).split(".")[1:]:
+                if not isinstance(result, dict) or key not in result:
+                    raise ConfigError(f"{path}: undefined YAML key in expression: {expression}")
+                result = result[key]
+            return result
+        if yaml_only:
+            return expression_match.group(0)
         if expression == "matrix":
             return dict(matrix)
         for prefix, namespace in (("vars.", variables), ("matrix.", matrix)):
@@ -135,19 +156,19 @@ def expand(value, variables, matrix):
     if isinstance(value, str):
         match = EXPRESSION.fullmatch(value)
         if match:
-            return lookup(match.group(1))
+            return lookup(match)
 
         def replace(match):
-            replacement = lookup(match.group(1))
+            replacement = lookup(match)
             if not isinstance(replacement, str):
-                raise ConfigError("matrix mapping cannot be embedded in a string")
+                raise ConfigError("non-string expression value cannot be embedded in a string")
             return replacement
 
         return EXPRESSION.sub(replace, value)
     if isinstance(value, list):
-        return [expand(item, variables, matrix) for item in value]
+        return [expand(item, variables, matrix, source, yaml_only=yaml_only) for item in value]
     if isinstance(value, dict):
-        return {key: expand(item, variables, matrix) for key, item in value.items()}
+        return {key: expand(item, variables, matrix, source, yaml_only=yaml_only) for key, item in value.items()}
     return value
 
 

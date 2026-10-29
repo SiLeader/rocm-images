@@ -13,7 +13,8 @@ from rocm_images import generate_dockerfile as generator
 
 @unittest.skipUnless(shutil.which("jq") and shutil.which("sha256sum"), "requires jq and sha256sum")
 class ManifestDownloadTests(unittest.TestCase):
-    def run_download(self, *, indirect=True, nightly_tag="b11960\n", corrupt=False, archives=True):
+    def run_download(self, *, indirect=True, nightly_tag="b11960\n", corrupt=False,
+                     archive_versions=("9.9", "10.0", "10.1")):
         config = generator.read_model(
             Path(__file__).resolve().parents[1] / "manifests/llama.cpp.yaml", generator.Config,
         )
@@ -32,7 +33,7 @@ class ManifestDownloadTests(unittest.TestCase):
 
         tag = "b11960" if indirect else config.vars["llama-cpp-version"]
         binary_assets = [asset(f"llama-{tag}-bin-ubuntu-rocm-{version}-x64.tar.gz", version)
-                         for version in ("9.9", "10.0")] if archives else []
+                         for version in archive_versions]
         if indirect:
             pointer = asset("nightly-tag.txt", nightly_tag)
             if corrupt:
@@ -70,12 +71,12 @@ class ManifestDownloadTests(unittest.TestCase):
         result, requests, archive = self.run_download()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("https://api.github.com/repos/ggml-org/llama.cpp/releases/tags/b11960", requests)
-        self.assertEqual(archive, "10.0")
+        self.assertEqual(archive, "10.1")
 
     def test_binary_release_can_be_used_directly(self):
         result, _, archive = self.run_download(indirect=False)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(archive, "10.0")
+        self.assertEqual(archive, "10.1")
 
     def test_pointer_digest_mismatch_stops_before_binary_lookup(self):
         result, requests, archive = self.run_download(corrupt=True)
@@ -91,8 +92,8 @@ class ManifestDownloadTests(unittest.TestCase):
                 self.assertEqual(len(requests), 2)
                 self.assertIsNone(archive)
 
-    def test_missing_rocm_archive_fails(self):
-        result, _, archive = self.run_download(archives=False)
+    def test_missing_requested_rocm_archive_fails(self):
+        result, _, archive = self.run_download(archive_versions=("9.9", "10.0"))
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("No Ubuntu x64 ROCm archive found", result.stderr)
+        self.assertIn("No Ubuntu x64 ROCm archive found for requested version", result.stderr)
         self.assertIsNone(archive)

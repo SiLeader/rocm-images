@@ -109,6 +109,8 @@ Image manifests use `schema-version: 1` and support these fields:
 
 Matrix values are referenced as `${{ matrix.AXIS }}`. Ordinary shell expressions such as `${NAME}` are preserved. A shared matrix file contains `schema-version: 1` and `matrix`.
 
+`${{ readYaml('matrix.yaml').matrix.gfx }}` reads a value from a YAML file relative to the declaring manifest. Dot-separated keys select nested mappings. A standalone expression preserves the value's type, so a list can be used as a matrix axis; only strings can be embedded in other text. These references are resolved before manifest validation.
+
 `matrix-from-file` and `base-image.source` paths are resolved relative to the manifest that declares them. For example, the application manifests reference the common base as follows:
 
 ```yaml
@@ -127,6 +129,13 @@ Each step has exactly one of `run`, `workdir`, or `entrypoint`, plus an optional
 Unknown keys, undefined expressions, duplicate YAML keys, and circular source references are rejected.
 
 ## Development
+
+### CI
+
+- [Tests](.github/workflows/test.yml) runs on every pull request. It installs locked dependencies with Python 3.14, runs the test suite, and validates all image manifests by generating Dockerfiles. It does not build or push container images.
+- [Publish images](.github/workflows/publish.yml) runs only via `workflow_dispatch`. In GitHub Actions, select **Publish images** → **Run workflow** and choose the ref to publish. After the tests pass, it builds the base, ComfyUI, and llama.cpp images in dependency order and pushes every manifest-defined tag to GHCR. Publishing runs are serialized to prevent concurrent tag updates.
+
+Publishing authenticates with the repository's `GITHUB_TOKEN` using `packages: write`; no separate registry secret is required. Existing GHCR packages must grant this repository Actions write access. Manifest image names determine the destination (currently `ghcr.io/sileader/rocm-images/*`); update them before publishing from a fork. The manual workflow must be present on the default branch to appear in GitHub Actions.
 
 Run the build-tool tests:
 

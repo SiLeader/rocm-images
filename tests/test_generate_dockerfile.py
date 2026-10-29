@@ -1,3 +1,4 @@
+import itertools
 from pathlib import Path
 import subprocess
 import sys
@@ -57,15 +58,18 @@ class GeneratorTests(unittest.TestCase):
 
     def test_real_configs_and_shell_syntax(self):
         for name in ("base.yaml", "comfyui.yaml", "llama.cpp.yaml"):
+            config, axes = generator.load_config(ROOT / name)
+            matrices = [dict(zip(axes, values)) for values in itertools.product(*axes.values())]
             outputs = generator.generate_all(ROOT / name)
-            self.assertEqual(len(outputs), 1 if name == "base.yaml" else 2)
+            self.assertEqual(len(outputs), len(matrices) * (1 if name == "base.yaml" else 2))
             for text in outputs.values():
                 self.assertNotIn("${{", text)
             self.assertTrue(any("ubuntu:26.04@sha256:" in text for text in outputs.values()))
             if name != "base.yaml":
-                child = outputs[generator.output_name(ROOT / name, "linux/amd64", {"gfx": "gfx1201", "rocm": "10.1"})]
-                self.assertIn("FROM ghcr.io/sileader/rocm-images/base-ubuntu:26.04-rocm10.1-gfx1201 AS stage_0", child)
-                self.assertNotIn("Install ROCm", child)
+                for matrix in matrices:
+                    child = outputs[generator.output_name(ROOT / name, "linux/amd64", matrix)]
+                    self.assertIn(f"FROM ghcr.io/sileader/rocm-images/base-ubuntu:26.04-rocm{matrix['rocm']}-{matrix['gfx']} AS stage_0", child)
+                    self.assertNotIn("Install ROCm", child)
         config = generator.read_model(ROOT / "llama.cpp.yaml", generator.Config)
         run = next(step.run for step in config.steps if step.run)
         run = generator.expand(run, config.vars, {"gfx": "gfx1201", "rocm": "10.1"})
@@ -181,6 +185,72 @@ class GeneratorTests(unittest.TestCase):
         (self.directory / "matrix.yaml").write_text("schema-version: 1\nmatrix:\n  gfx: [a, b]\n")
         path = self.write("image.yaml", **{"matrix-from-file": "matrix.yaml"})
         self.assertEqual(len(generator.generate_all(path)), 2)
+
+    def test_read_yaml_matrix_relative_to_config(self):
+        (self.directory / "matrix.yaml").write_text("matrix:\n  gfx: [a, b]\n")
+        path = self.write("image.yaml", matrix={"gfx": "${{ readYaml('matrix.yaml').matrix.gfx }}"},
+                          steps=[{"run": "echo ${{ matrix.gfx }}"}])
+        outputs = generator.generate_all(path)
+        self.assertEqual(len(outputs), 2)
+        for gfx in ("a", "b"):
+            self.assertTrue(any(f"echo {gfx}\n" in text for text in outputs.values()))
+
+    def test_read_yaml_mapping_and_string(self):
+        (self.directory / "data.yaml").write_text("matrix:\n  gfx: [a]\nversion: v1\n")
+        path = self.write("image.yaml", matrix='${{ readYaml("data.yaml").matrix }}',
+                          vars={"version": "${{ readYaml('data.yaml').version }}"},
+                          image={"name": "example/test", "tags": ["tag-${{ readYaml('data.yaml').version }}"]},
+                          steps=[{"run": "echo ${{ vars.version }} ${{ matrix.gfx }}"}])
+        config, axes = generator.load_config(path)
+        self.assertEqual(axes, {"gfx": ["a"]})
+        self.assertEqual(config.image.tags, ["tag-v1"])
+        self.assertIn("echo v1 a\n", next(iter(generator.generate_all(path).values())))
+
+    def test_read_yaml_preserves_deferred_expressions(self):
+        run = "echo ${{vars.version}} ${{ matrix.gfx}}"
+        path = self.write("image.yaml", matrix={"gfx": ["a"]}, vars={"version": "v1"},
+                          steps=[{"run": run}])
+        config, _ = generator.load_config(path)
+        self.assertEqual(config.steps[0].run, run)
+        self.assertIn("echo v1 a\n", next(iter(generator.generate_all(path).values())))
+
+    def test_read_yaml_dependency_relative_to_own_manifest(self):
+        (self.directory / "base").mkdir()
+        (self.directory / "base" / "matrix.yaml").write_text("gfx: [a, b]\n")
+        self.write("base/image.yaml", matrix={"gfx": "${{ readYaml('matrix.yaml').gfx }}"},
+                   steps=[{"run": "echo base ${{ matrix.gfx }}"}])
+        for use_from in (False, True):
+            with self.subTest(use_from=use_from):
+                path = self.write("image.yaml", **{"base-image": {
+                    "source": "base/image.yaml", "with-matrix": {"gfx": "b"}, "use-from": use_from,
+                }})
+                outputs = generator.generate_all(path)
+                self.assertTrue(any("echo base b\n" in text for text in outputs.values()))
+
+    def test_read_yaml_invalid_references(self):
+        (self.directory / "data.yaml").write_text("matrix:\n  gfx: [a]\n")
+        for expression, message in (
+            ("readYaml('missing.yaml').matrix.gfx", "missing.yaml"),
+            ("readYaml('data.yaml').matrix.missing", "undefined YAML key"),
+            ("readYaml('data.yaml').matrix.gfx.missing", "undefined YAML key"),
+            ("readYaml(data.yaml).matrix.gfx", "invalid readYaml expression"),
+        ):
+            with self.subTest(expression=expression):
+                path = self.write("image.yaml", matrix={"gfx": "${{ " + expression + " }}"})
+                with self.assertRaisesRegex(generator.ConfigError, message):
+                    generator.generate_all(path)
+
+    def test_read_yaml_retains_validation(self):
+        for content in ("gfx: []\n", "gfx: [1]\n", "gfx: [a]\ngfx: [b]\n", "gfx: [\n"):
+            with self.subTest(content=content):
+                (self.directory / "data.yaml").write_text(content)
+                path = self.write("image.yaml", matrix={"gfx": "${{ readYaml('data.yaml').gfx }}"})
+                with self.assertRaises(generator.ConfigError):
+                    generator.generate_all(path)
+        path = self.write("image.yaml", steps=[{"run": "echo ${{ readYaml('data.yaml') }}"}])
+        (self.directory / "data.yaml").write_text("gfx: [a]\n")
+        with self.assertRaisesRegex(generator.ConfigError, "cannot be embedded"):
+            generator.generate_all(path)
 
     def test_duplicate_keys(self):
         path = self.directory / "bad.yaml"

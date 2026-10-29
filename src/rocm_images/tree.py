@@ -40,7 +40,7 @@ class DependencyTree:
                          f"{', ' + selection if selection else ''}] -> {tags}")
             children = [(dep, False) for dep in target.dependencies]
             children += [(path, True) for path in target.inline_sources]
-            child_prefix = prefix + ("    " if branch == "└── " else "│   " if branch else "")
+            child_prefix = prefix + ("│   " if branch == "├── " else "    ")
             for index, (child, inline) in enumerate(children):
                 child_branch = "└── " if index == len(children) - 1 else "├── "
                 if inline:
