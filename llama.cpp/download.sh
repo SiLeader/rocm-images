@@ -1,5 +1,13 @@
 #!/usr/bin/env bash
 
+if [[ $# -lt 2 ]]; then
+  echo "Usage: $0 <llama-cpp-version> <rocm-version>"
+  exit 1
+fi
+
+release_tag="$1"
+rocm_version="$2"
+
 apt-get update
 apt-get install -y --no-install-recommends ca-certificates curl jq coreutils tar gzip
 rm -rf /var/lib/apt/lists/*
@@ -23,7 +31,6 @@ fetch_release() {
     -H "X-GitHub-Api-Version: 2026-03-10" "$releases_url/tags/$encoded_tag"
 }
 
-release_tag='${{ vars.llama-cpp-version }}'
 release=$(fetch_release "$release_tag")
 
 # Versioned releases point to their binary release via nightly-tag.txt.
@@ -35,7 +42,7 @@ if [ -n "$nightly_asset" ]; then
 fi
 
 # Select the archive matching the requested ROCm version.
-rocm_asset=$(printf '%s' "$release" | jq -ec --arg tag "$release_tag" --arg rocm '${{ matrix.rocm }}' '
+rocm_asset=$(printf '%s' "$release" | jq -ec --arg tag "$release_tag" --arg rocm "$rocm_version" '
   [.assets[]
     | select(.name | startswith("llama-" + $tag + "-bin-ubuntu-rocm-"))
     | select(.name | test("-rocm-[0-9]+(\\.[0-9]+)*-x64\\.tar\\.gz$"))
