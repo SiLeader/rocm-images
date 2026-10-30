@@ -56,6 +56,8 @@ jobs:
         with:
           context: ./base
           file: ./base/Dockerfile
+          cache-to: type=gha,mode=max
+          cache-from: type=gha,mode=max
           push: true
           build-args: |
             ROCM_VERSION=${{ matrix.rocm }}
@@ -101,6 +103,8 @@ jobs:
         with:
           context: ./comfyui
           file: ./comfyui/Dockerfile
+          cache-to: type=gha,mode=max
+          cache-from: type=gha,mode=max
           push: true
           build-args: |
             ROCM_VERSION=${{ matrix.rocm.base }}
@@ -148,6 +152,8 @@ jobs:
         with:
           context: ./llama.cpp
           file: ./llama.cpp/Dockerfile
+          cache-to: type=gha,mode=max
+          cache-from: type=gha,mode=max
           push: true
           build-args: |
             ROCM_VERSION=${{ matrix.rocm }}
