@@ -30,6 +30,80 @@ docker pull ghcr.io/sileader/rocm-images/llama.cpp:v0.8.0-rocm10.0-gfx1201
 - **ComfyUI:** 共通ベースを使用し、指定したバージョンの ComfyUI を取得して、Python 仮想環境に ROCm 向け PyTorch パッケージと ComfyUI の依存パッケージをインストールします。エントリーポイントは `/opt/comfyui/venv/bin/python main.py`、既定の引数は `--listen 0.0.0.0` です。
 - **llama.cpp:** 共通ベースを使用し、ビルドコンテキストからビルド済みバイナリをコピーします。エントリーポイントは `/opt/llama.cpp/llama-server` です。サーバーの引数はコンテナ実行時に指定してください。
 
+### 実行方法
+
+#### ComfyUI
+
+以下が実行例です。
+
+```sh
+docker run --rm \
+  --device /dev/kfd \
+  --device /dev/dri \
+  --volume /path/to/models:/opt/comfyui/ComfyUI/models \
+  --volume /path/to/user:/opt/comfyui/ComfyUI/user \
+  --volume /path/to/output:/opt/comfyui/ComfyUI/output \
+  -p 8188:8188 \
+  ghcr.io/sileader/rocm-images/comfyui:v0.43.0-rocm10.0-gfx1201
+```
+
+#### llama.cpp
+
+以下が実行例です。
+
+```sh
+docker run --rm \
+  --device /dev/kfd \
+  --device /dev/dri \
+  --volume /path/to/model:/container/model \
+  -p 8080:8080 \
+  ghcr.io/sileader/rocm-images/llama.cpp:v0.8.0-rocm10.0-gfx1201 \
+  -m /container/model/model.gguf \
+  --port 8080 \
+  --host 0.0.0.0
+```
+
+コンテナ内からGPUが見えているかは以下で確認できます。
+
+```sh
+docker run --rm \
+  --device /dev/kfd \
+  --device /dev/dri \
+  ghcr.io/sileader/rocm-images/llama.cpp:v0.8.0-rocm10.0-gfx1201 \
+  --list-devices
+```
+
+例えば以下のように表示されます。
+
+```
+Available devices:
+  ROCm0: AMD Radeon AI PRO R9700 (32624 MiB, 32558 MiB free)
+```
+
+#### amd-smiやbash
+AMD ROCmのインストール時に`amd-smi`コマンドがインストールされます。
+以下のコマンドでそれを実行できます。llama.cppもcomfyuiも同じように起動します。
+
+```sh
+docker run --rm \
+  --device /dev/kfd \
+  --device /dev/dri \
+  --entrypoint /usr/bin/amd-smi \
+  ghcr.io/sileader/rocm-images/llama.cpp:v0.8.0-rocm10.0-gfx1201
+```
+
+またベースイメージがubuntuであるため、bashもインストールされています。
+以下のコマンドで対話モードのbashを実行できます。
+
+```sh
+docker run --rm -it \
+  --device /dev/kfd \
+  --device /dev/dri \
+  --entrypoint /bin/bash \
+  ghcr.io/sileader/rocm-images/llama.cpp:v0.8.0-rocm10.0-gfx1201
+```
+
+
 ## リポジトリ構成
 
 ```text

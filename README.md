@@ -30,6 +30,78 @@ docker pull ghcr.io/sileader/rocm-images/llama.cpp:v0.8.0-rocm10.0-gfx1201
 - **ComfyUI:** uses the shared base, clones the selected ComfyUI version, and installs ROCm PyTorch packages and ComfyUI requirements in a Python virtual environment. Its entrypoint is `/opt/comfyui/venv/bin/python main.py`, with default arguments `--listen 0.0.0.0`.
 - **llama.cpp:** uses the shared base and copies prebuilt binaries from the build context. Its entrypoint is `/opt/llama.cpp/llama-server`; supply server arguments when running the container.
 
+### Running the images
+
+#### ComfyUI
+
+Example:
+
+```sh
+docker run --rm \
+  --device /dev/kfd \
+  --device /dev/dri \
+  --volume /path/to/models:/opt/comfyui/ComfyUI/models \
+  --volume /path/to/user:/opt/comfyui/ComfyUI/user \
+  --volume /path/to/output:/opt/comfyui/ComfyUI/output \
+  -p 8188:8188 \
+  ghcr.io/sileader/rocm-images/comfyui:v0.43.0-rocm10.0-gfx1201
+```
+
+#### llama.cpp
+
+Example:
+
+```sh
+docker run --rm \
+  --device /dev/kfd \
+  --device /dev/dri \
+  --volume /path/to/model:/container/model \
+  -p 8080:8080 \
+  ghcr.io/sileader/rocm-images/llama.cpp:v0.8.0-rocm10.0-gfx1201 \
+  -m /container/model/model.gguf \
+  --port 8080 \
+  --host 0.0.0.0
+```
+
+To check whether the GPU is visible from inside the container:
+
+```sh
+docker run --rm \
+  --device /dev/kfd \
+  --device /dev/dri \
+  ghcr.io/sileader/rocm-images/llama.cpp:v0.8.0-rocm10.0-gfx1201 \
+  --list-devices
+```
+
+Example output:
+
+```
+Available devices:
+  ROCm0: AMD Radeon AI PRO R9700 (32624 MiB, 32558 MiB free)
+```
+
+#### amd-smi and bash
+
+The `amd-smi` command is installed together with AMD ROCm. You can run it with the command below; it works the same way for both the llama.cpp and ComfyUI images.
+
+```sh
+docker run --rm \
+  --device /dev/kfd \
+  --device /dev/dri \
+  --entrypoint /usr/bin/amd-smi \
+  ghcr.io/sileader/rocm-images/llama.cpp:v0.8.0-rocm10.0-gfx1201
+```
+
+Because the base image is Ubuntu, bash is also installed. You can start an interactive bash session with the command below:
+
+```sh
+docker run --rm -it \
+  --device /dev/kfd \
+  --device /dev/dri \
+  --entrypoint /bin/bash \
+  ghcr.io/sileader/rocm-images/llama.cpp:v0.8.0-rocm10.0-gfx1201
+```
+
 ## Repository layout
 
 ```text
