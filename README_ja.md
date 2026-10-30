@@ -10,9 +10,11 @@ Ubuntu 26.04 上で AMD ROCm を利用するためのコンテナイメージで
 
 | イメージ | バージョン | ROCm | GPU ターゲット | タグ形式 |
 | --- | --- | --- | --- | --- |
-| `ghcr.io/sileader/rocm-images/base-ubuntu` | Ubuntu `26.04` | `10.0`、`10.1` | `gfx1201` | `26.04-rocm<rocm>-<gfx>` |
-| `ghcr.io/sileader/rocm-images/comfyui` | `v0.43.0` | `10.0`、`10.1` | `gfx1201` | `<comfy-version>-rocm<rocm>-<gfx>` |
-| `ghcr.io/sileader/rocm-images/llama.cpp` | `v0.8.0` | `10.0` | `gfx1201` | `<llama-cpp-version>-rocm<rocm>-<gfx>` |
+| `ghcr.io/sileader/rocm-images/base-ubuntu` | Ubuntu `26.04` | `10.0`、`10.1` | `target.yaml` | `26.04-rocm<rocm>-<gfx>` |
+| `ghcr.io/sileader/rocm-images/comfyui` | `v0.43.0` | `10.0`、`10.1` | `target.yaml` | `<comfy-version>-rocm<rocm>-<gfx>` |
+| `ghcr.io/sileader/rocm-images/llama.cpp` | `v0.8.0` | `10.0` | `target.yaml` | `<llama-cpp-version>-rocm<rocm>-<gfx>` |
+
+すべてのイメージのビルド対象 GPU は [target.yaml](target.yaml) の `gfx1201`、`gfx1102`、`gfx1101`、`gfx1100`、`gfx1151`、`gfx1150`、`gfx950`、`gfx942`、`gfx90a` です。以下のコマンドでは `gfx1201` を例にしています。他の設定済みターゲット向けにビルドする場合は、`GFX_TARGET` と関連するすべてのイメージタグの GPU 接尾辞を変更してください。
 
 ワークフローはバージョン付きのタグのみを公開し、`latest` は公開しません。
 
@@ -31,6 +33,7 @@ docker pull ghcr.io/sileader/rocm-images/llama.cpp:v0.8.0-rocm10.0-gfx1201
 ## リポジトリ構成
 
 ```text
+target.yaml                  全イメージのビルド対象 GPU
 base/
   Dockerfile                 Ubuntu 26.04 と ROCm
   amdrocm-stable.sources     AMD stable APT リポジトリ設定
@@ -59,16 +62,27 @@ docker build --platform linux/amd64 \
 
 ### ComfyUI
 
+ComfyUI では、ベースの ROCm バージョン、PyTorch パッケージの ROCm 接尾辞、torchvision のバージョンを個別に指定します。ワークフローで使用している組み合わせは次のとおりです。
+
+| `ROCM_VERSION` | `PYTORCH_ROCM_VERSION` | `TORCHVISION_VERSION` |
+| --- | --- | --- |
+| `10.0` | `10.0.0` | `0.29.0` |
+| `10.1` | `10.1.0` | `0.29.0a0` |
+
+Dockerfile は torch を `2.14.0`、torchaudio を `2.11.0.3` に固定し、それぞれに `+rocm<PYTORCH_ROCM_VERSION>` の接尾辞を付けます。torch と torchvision には `device-<GFX_TARGET>` の extra も指定します。
+
 ```sh
 docker build --platform linux/amd64 \
   --build-arg ROCM_VERSION=10.0 \
   --build-arg GFX_TARGET=gfx1201 \
+  --build-arg PYTORCH_ROCM_VERSION=10.0.0 \
+  --build-arg TORCHVISION_VERSION=0.29.0 \
   --build-arg COMFY_VERSION=v0.43.0 \
   -t ghcr.io/sileader/rocm-images/comfyui:v0.43.0-rocm10.0-gfx1201 \
   ./comfyui
 ```
 
-設定済みの ROCm `10.1` 向けをビルドする場合は、ベースと ComfyUI の両方のコマンドで `ROCM_VERSION` と出力タグを `10.1` に変更してください。
+設定済みの ROCm `10.1` 向けをビルドする場合は、ベースと ComfyUI の両方のコマンドで `ROCM_VERSION` と出力タグを `10.1` に変更してください。ComfyUI のコマンドでは、さらに `PYTORCH_ROCM_VERSION=10.1.0` と `TORCHVISION_VERSION=0.29.0a0` を指定します。
 
 ### llama.cpp
 
@@ -97,9 +111,9 @@ docker build --platform linux/amd64 \
 
 [Publish images](.github/workflows/publish.yml) は `workflow_dispatch` による手動実行です。**Actions → Publish images → Run workflow** を選び、公開する ref を指定してください。Actions の画面に表示するには、ワークフローをデフォルトブランチに配置する必要があります。
 
-最初にベースイメージの全組み合わせをビルドしてプッシュします。ベースのジョブが成功した後、ComfyUI と llama.cpp のジョブは並列に実行できます。llama.cpp のジョブではビルド前にバイナリをダウンロードして検証します。このワークフローにテストジョブはありません。公開ワークフローの実行は `cancel-in-progress: false` で直列化しています。
+最初に `target.yaml` から GPU ターゲットを読み込み、その後ベースイメージの全組み合わせをビルドしてプッシュします。ベースのジョブが成功した後、ComfyUI と llama.cpp のジョブは並列に実行できます。llama.cpp のジョブではビルド前にバイナリをダウンロードして検証します。このワークフローにテストジョブはありません。公開ワークフローの実行は `cancel-in-progress: false` で直列化しています。
 
-各ジョブは `packages: write` 権限を付与したリポジトリの `GITHUB_TOKEN` で GHCR に認証します。既存の GHCR パッケージには、このリポジトリの Actions からの書き込みを許可してください。公開先とバージョンの組み合わせはワークフローで指定しているため、フォークから公開する場合は公開先を変更してください。アプリケーションの Dockerfile も `ghcr.io/sileader/rocm-images/base-ubuntu` を参照しているため、ベースイメージの名前空間を変更する場合は参照先も更新してください。
+各公開ジョブは `packages: write` 権限を付与したリポジトリの `GITHUB_TOKEN` で GHCR に認証します。既存の GHCR パッケージには、このリポジトリの Actions からの書き込みを許可してください。GPU ターゲットは `target.yaml`、公開先とバージョンの組み合わせはワークフローで指定しているため、フォークから公開する場合は公開先を変更してください。アプリケーションの Dockerfile も `ghcr.io/sileader/rocm-images/base-ubuntu` を参照しているため、ベースイメージの名前空間を変更する場合は参照先も更新してください。
 
 ## ライセンス
 

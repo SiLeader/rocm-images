@@ -10,9 +10,11 @@ The build targets and tags below are configured in [Publish images](.github/work
 
 | Image | Version | ROCm | GPU target | Tag format |
 | --- | --- | --- | --- | --- |
-| `ghcr.io/sileader/rocm-images/base-ubuntu` | Ubuntu `26.04` | `10.0`, `10.1` | `gfx1201` | `26.04-rocm<rocm>-<gfx>` |
-| `ghcr.io/sileader/rocm-images/comfyui` | `v0.43.0` | `10.0`, `10.1` | `gfx1201` | `<comfy-version>-rocm<rocm>-<gfx>` |
-| `ghcr.io/sileader/rocm-images/llama.cpp` | `v0.8.0` | `10.0` | `gfx1201` | `<llama-cpp-version>-rocm<rocm>-<gfx>` |
+| `ghcr.io/sileader/rocm-images/base-ubuntu` | Ubuntu `26.04` | `10.0`, `10.1` | `target.yaml` | `26.04-rocm<rocm>-<gfx>` |
+| `ghcr.io/sileader/rocm-images/comfyui` | `v0.43.0` | `10.0`, `10.1` | `target.yaml` | `<comfy-version>-rocm<rocm>-<gfx>` |
+| `ghcr.io/sileader/rocm-images/llama.cpp` | `v0.8.0` | `10.0` | `target.yaml` | `<llama-cpp-version>-rocm<rocm>-<gfx>` |
+
+All image matrices use the GPU targets in [target.yaml](target.yaml): `gfx1201`, `gfx1102`, `gfx1101`, `gfx1100`, `gfx1151`, `gfx1150`, `gfx950`, `gfx942`, and `gfx90a`. The commands below use `gfx1201` as an example. To build for another configured target, change `GFX_TARGET` and the GPU suffix in all related image tags.
 
 The workflow publishes versioned tags only; it does not publish `latest`.
 
@@ -31,6 +33,7 @@ docker pull ghcr.io/sileader/rocm-images/llama.cpp:v0.8.0-rocm10.0-gfx1201
 ## Repository layout
 
 ```text
+target.yaml                  GPU targets shared by all image matrices
 base/
   Dockerfile                 Ubuntu 26.04 with ROCm
   amdrocm-stable.sources     AMD stable APT repository configuration
@@ -59,16 +62,27 @@ docker build --platform linux/amd64 \
 
 ### ComfyUI
 
+ComfyUI requires separate values for the base ROCm version, the PyTorch ROCm package suffix, and the torchvision version. The workflow uses these combinations:
+
+| `ROCM_VERSION` | `PYTORCH_ROCM_VERSION` | `TORCHVISION_VERSION` |
+| --- | --- | --- |
+| `10.0` | `10.0.0` | `0.29.0` |
+| `10.1` | `10.1.0` | `0.29.0a0` |
+
+The Dockerfile pins torch to `2.14.0` and torchaudio to `2.11.0.3`, each with the `+rocm<PYTORCH_ROCM_VERSION>` suffix. Torch and torchvision also use the `device-<GFX_TARGET>` extra.
+
 ```sh
 docker build --platform linux/amd64 \
   --build-arg ROCM_VERSION=10.0 \
   --build-arg GFX_TARGET=gfx1201 \
+  --build-arg PYTORCH_ROCM_VERSION=10.0.0 \
+  --build-arg TORCHVISION_VERSION=0.29.0 \
   --build-arg COMFY_VERSION=v0.43.0 \
   -t ghcr.io/sileader/rocm-images/comfyui:v0.43.0-rocm10.0-gfx1201 \
   ./comfyui
 ```
 
-To build the configured ROCm `10.1` variant, change `ROCM_VERSION` and the output tags to `10.1` in both the base and ComfyUI commands.
+To build the configured ROCm `10.1` variant, change `ROCM_VERSION` and the output tags to `10.1` in both the base and ComfyUI commands. In the ComfyUI command, also set `PYTORCH_ROCM_VERSION=10.1.0` and `TORCHVISION_VERSION=0.29.0a0`.
 
 ### llama.cpp
 
@@ -97,9 +111,9 @@ docker build --platform linux/amd64 \
 
 [Publish images](.github/workflows/publish.yml) runs manually via `workflow_dispatch`. Select **Actions → Publish images → Run workflow** and choose the ref to publish. The workflow must be on the default branch to appear in the Actions interface.
 
-The workflow builds and pushes the base image matrix first. After the base job succeeds, the ComfyUI and llama.cpp jobs can run in parallel. The llama.cpp job downloads and verifies its binaries before building. The workflow has no test job. Publishing runs are serialized with `cancel-in-progress: false`.
+The workflow first loads GPU targets from `target.yaml`, then builds and pushes the base image matrix. After the base job succeeds, the ComfyUI and llama.cpp jobs can run in parallel. The llama.cpp job downloads and verifies its binaries before building. The workflow has no test job. Publishing runs are serialized with `cancel-in-progress: false`.
 
-Each job authenticates to GHCR using the repository's `GITHUB_TOKEN` with `packages: write`. Existing GHCR packages must grant this repository Actions write access. Image destinations and version matrices are set in the workflow; update the destinations before publishing from a fork. The application Dockerfiles also reference `ghcr.io/sileader/rocm-images/base-ubuntu`, so update those references if you change the base image namespace.
+Each publishing job authenticates to GHCR using the repository's `GITHUB_TOKEN` with `packages: write`. Existing GHCR packages must grant this repository Actions write access. GPU targets are set in `target.yaml`; image destinations and version combinations are set in the workflow; update the destinations before publishing from a fork. The application Dockerfiles also reference `ghcr.io/sileader/rocm-images/base-ubuntu`, so update those references if you change the base image namespace.
 
 ## License
 
