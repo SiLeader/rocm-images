@@ -16,7 +16,9 @@ RUN apt-get update && \
     mkdir --parents --mode=0755 /etc/apt/keyrings && \
     wget https://stable.repo.amd.com/rocm/gpg/packages.gpg -O - | gpg --dearmor > /etc/apt/keyrings/amdrocm.gpg && \
     apt-get update && \
-    apt-get install -y amdrocm${ROCM_VERSION}-${GFX_TARGET} && \
+    apt-get install -y --no-install-recommends amdrocm${ROCM_VERSION}-${GFX_TARGET} && \
+    apt-get purge -y wget gpg ca-certificates && \
+    apt-get autopurge -y && \
     rm -rf /var/lib/apt/lists/*
 
 ENV LD_LIBRARY_PATH=/opt/rocm/lib
