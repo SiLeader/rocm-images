@@ -22,7 +22,6 @@ RUN apt-get update && \
         "torchvision[device-${GFX_TARGET}]==${TORCHVISION_VERSION}+rocm${PYTORCH_ROCM_VERSION}" \
         "torchaudio==2.11.0.3+rocm${PYTORCH_ROCM_VERSION}" && \
     /opt/comfyui/venv/bin/python -m pip install --no-cache-dir -r requirements.txt && \
-    apt-get purge -y git && \
     apt-get autopurge -y && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
