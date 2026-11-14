@@ -183,7 +183,7 @@ docker build --platform linux/amd64 \
 
 [Publish images](.github/workflows/publish.yml) runs manually via `workflow_dispatch`. Select **Actions → Publish images → Run workflow** and choose the ref to publish. The workflow must be on the default branch to appear in the Actions interface.
 
-The workflow first loads GPU targets from `target.yaml`, then builds and pushes the base image matrix. After the base job succeeds, the ComfyUI and llama.cpp jobs can run in parallel. The llama.cpp job downloads and verifies its binaries before building. The workflow has no test job. Publishing runs are serialized with `cancel-in-progress: false`.
+The workflow first loads GPU targets from `target.yaml`, then builds and pushes the base image matrix while a separate job downloads and verifies llama.cpp binaries. Each llama.cpp version, CPU architecture, and ROCm version combination is downloaded from the release once per workflow run and shared across GPU targets as an artifact. The artifact contains a tar archive to preserve executable permissions and symbolic links. ComfyUI builds wait for the base images; llama.cpp builds wait for both the base images and binary downloads. The workflow has no test job. Publishing runs are serialized with `cancel-in-progress: false`.
 
 Each publishing job authenticates to GHCR using the repository's `GITHUB_TOKEN` with `packages: write`. Existing GHCR packages must grant this repository Actions write access. GPU targets are set in `target.yaml`; image destinations and version combinations are set in the workflow; update the destinations before publishing from a fork. The application Dockerfiles also reference `ghcr.io/sileader/rocm-images/base-ubuntu`, so update those references if you change the base image namespace.
 

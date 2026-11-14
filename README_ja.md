@@ -185,7 +185,7 @@ docker build --platform linux/amd64 \
 
 [Publish images](.github/workflows/publish.yml) は `workflow_dispatch` による手動実行です。**Actions → Publish images → Run workflow** を選び、公開する ref を指定してください。Actions の画面に表示するには、ワークフローをデフォルトブランチに配置する必要があります。
 
-最初に `target.yaml` から GPU ターゲットを読み込み、その後ベースイメージの全組み合わせをビルドしてプッシュします。ベースのジョブが成功した後、ComfyUI と llama.cpp のジョブは並列に実行できます。llama.cpp のジョブではビルド前にバイナリをダウンロードして検証します。このワークフローにテストジョブはありません。公開ワークフローの実行は `cancel-in-progress: false` で直列化しています。
+最初に `target.yaml` から GPU ターゲットを読み込み、その後ベースイメージの全組み合わせをビルドしてプッシュするのと並行して、専用ジョブで llama.cpp のバイナリをダウンロードして検証します。llama.cpp のバージョン・CPU アーキテクチャ・ROCm バージョンの組み合わせごとに、ワークフロー実行全体でリリースからのダウンロードを1回だけ行い、アーティファクトとして各 GPU ターゲットで共有します。実行権限とシンボリックリンクを保持するため、アーティファクトには tar アーカイブを格納します。ComfyUI のビルドはベースイメージの完了を、llama.cpp のビルドはベースイメージとバイナリのダウンロードの両方の完了を待ちます。このワークフローにテストジョブはありません。公開ワークフローの実行は `cancel-in-progress: false` で直列化しています。
 
 各公開ジョブは `packages: write` 権限を付与したリポジトリの `GITHUB_TOKEN` で GHCR に認証します。既存の GHCR パッケージには、このリポジトリの Actions からの書き込みを許可してください。GPU ターゲットは `target.yaml`、公開先とバージョンの組み合わせはワークフローで指定しているため、フォークから公開する場合は公開先を変更してください。アプリケーションの Dockerfile も `ghcr.io/sileader/rocm-images/base-ubuntu` を参照しているため、ベースイメージの名前空間を変更する場合は参照先も更新してください。
 
