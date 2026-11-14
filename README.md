@@ -12,7 +12,7 @@ The build targets and tags below are configured in [Publish images](.github/work
 | --- | --- | --- | --- | --- |
 | `ghcr.io/sileader/rocm-images/base-ubuntu` | Ubuntu `26.04` | `10.0`, `10.1` | `target.yaml` | `26.04-rocm<rocm>-<gfx>` |
 | `ghcr.io/sileader/rocm-images/comfyui` | `v0.43.0` | `10.0`, `10.1` | `target.yaml` | `<comfy-version>-rocm<rocm>-<gfx>` |
-| `ghcr.io/sileader/rocm-images/llama.cpp` | `v0.8.0` | `10.0` | `target.yaml` | `<llama-cpp-version>-rocm<rocm>-<gfx>` |
+| `ghcr.io/sileader/rocm-images/llama.cpp` | `v0.8.0`, `v0.9.0`, `v1.0.0` | `10.0` | `target.yaml` | `<llama-cpp-version>-rocm<rocm>-<gfx>` |
 
 All image matrices use the GPU targets in [target.yaml](target.yaml): `gfx1201`, `gfx1102`, `gfx1101`, `gfx1100`, `gfx1151`, `gfx1150`, `gfx950`, `gfx942`, and `gfx90a`. The commands below use `gfx1201` as an example. To build for another configured target, change `GFX_TARGET` and the GPU suffix in all related image tags.
 
